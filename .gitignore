@@ -1,0 +1,31 @@
+# Virtual Environment
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# Environment Variables
+.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python Build Files
+build/
+dist/
+*.egg-info/
+
+# ML Models (Optional)
+# Uncomment if you don't want to upload models
+# backend/ml/model.pkl
+# backend/ml/status_encoder.pkl
+# backend/ml/risk_encoder.pkl
