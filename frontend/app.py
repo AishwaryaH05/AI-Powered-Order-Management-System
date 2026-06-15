@@ -181,6 +181,14 @@ if st.button("🔄 Refresh Dashboard"):
 # ORDER INTAKE FORM (NEW)
 # =====================================
 
+if "intake_msg" in st.session_state:
+    msg = st.session_state["intake_msg"]
+    if "⚠️" in msg:
+        st.warning(msg)
+    else:
+        st.success(msg)
+    del st.session_state["intake_msg"]
+
 with st.expander("📝 New Eyewear Order Intake Form", expanded=False):
     with st.form("intake_form", clear_on_submit=True):
         col_c1, col_c2 = st.columns(2)
@@ -230,7 +238,7 @@ with st.expander("📝 New Eyewear Order Intake Form", expanded=False):
                     if resp.status_code == 200:
                         res_data = resp.json()
                         inv_msg = "✅ Lenses are in-house! Order scheduled for immediate cutting." if res_data.get("inventory_available") else "⚠️ Lenses NOT in-house! Scheduled for replenishment."
-                        st.success(f"Order #{res_data.get('id')} placed successfully! {inv_msg}")
+                        st.session_state["intake_msg"] = f"Order #{res_data.get('id')} placed successfully! {inv_msg}"
                         st.rerun()
                     else:
                         st.error(f"Error submitting order: {resp.text}")
@@ -431,7 +439,7 @@ if "sla_risk" in display_df.columns:
 
 st.dataframe(
     styled_df,
-    use_container_width=True
+    width="stretch"
 )
 
 # =====================================
@@ -471,7 +479,7 @@ if not df.empty:
             
         with uc4:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # spacer
-            submit_update = st.button("Update Order", use_container_width=True)
+            submit_update = st.button("Update Order", width="stretch")
             
         if submit_update:
             payload = {
@@ -515,7 +523,7 @@ st.markdown("### 🚨 Priority Orders")
 
 st.dataframe(
     priority_df,
-    use_container_width=True
+    width="stretch"
 )
 
 
@@ -545,7 +553,7 @@ styled_pred_df = pred_df.style.map(
 
 st.dataframe(
     styled_pred_df,
-    use_container_width=True
+    width="stretch"
 )
 
 high_count = len(
@@ -624,7 +632,7 @@ if len(inventory_ai_df) > 0:
 
     st.dataframe(
         inventory_ai_df,
-        use_container_width=True
+        width="stretch"
     )
 
 else:
@@ -640,7 +648,7 @@ st.markdown("## ⏰ SLA Breach Predictions")
 
 st.dataframe(
     sla_df,
-    use_container_width=True
+    width="stretch"
 )
 
 breach_count = len(
