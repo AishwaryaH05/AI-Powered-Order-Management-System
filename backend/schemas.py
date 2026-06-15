@@ -19,5 +19,9 @@ class OrderCreate(BaseModel):
 class StatusUpdate(BaseModel):
     status: str
 
+class StatusUpdatePatch(BaseModel):
+    new_status: str
+    delay_reason: str = None
+
 class InventoryUpdate(BaseModel):
     inventory_available: bool

@@ -1,11 +1,12 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DB_USER = "postgres"
-DB_PASSWORD = "Admin"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "ai_order_db"
+DB_USER = os.environ.get("DB_USER", "postgres")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = os.environ.get("DB_PORT", "5432")
+DB_NAME = os.environ.get("DB_NAME", "ai_order_db")
 
 DATABASE_URL = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}"

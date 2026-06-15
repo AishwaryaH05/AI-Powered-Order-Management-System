@@ -29,3 +29,7 @@ dist/
 # backend/ml/model.pkl
 # backend/ml/status_encoder.pkl
 # backend/ml/risk_encoder.pkl
+
+# Simulation logs
+whatsapp_alerts.log
+*.log

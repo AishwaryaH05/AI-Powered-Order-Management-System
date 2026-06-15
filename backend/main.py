@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import engine, SessionLocal
 from backend.models import Base
-from backend.schemas import OrderCreate, StatusUpdate, InventoryUpdate
+from backend.schemas import OrderCreate, StatusUpdate, StatusUpdatePatch, InventoryUpdate
 from backend.crud import (
     create_order,
     get_orders,
@@ -54,12 +54,12 @@ def add_order(order: OrderCreate):
         db.close()
 
 @app.get("/orders")
-def fetch_orders():
+def fetch_orders(status: str = None, lens_type: str = None, store_location: str = None):
 
     db: Session = SessionLocal()
 
     try:
-        return get_orders(db)
+        return get_orders(db, status=status, lens_type=lens_type, store_location=store_location)
 
     finally:
         db.close()
@@ -74,6 +74,22 @@ def change_status(order_id: int, status_update: StatusUpdate):
             db,
             order_id,
             status_update.status
+        )
+
+    finally:
+        db.close()
+
+@app.patch("/orders/{order_id}/status")
+def patch_status(order_id: int, status_patch: StatusUpdatePatch):
+
+    db: Session = SessionLocal()
+
+    try:
+        return update_order_status(
+            db,
+            order_id,
+            status_patch.new_status,
+            status_patch.delay_reason
         )
 
     finally:
@@ -172,7 +188,10 @@ def get_sla_predictions():
                 "status": order.status,
                 "sla_days": order.sla_days,
                 "sla_risk": prediction["sla_risk"],
-                "message": prediction["message"]
+                "message": prediction["message"],
+                "elapsed_days": prediction["elapsed_days"],
+                "remaining_days": prediction["remaining_days"],
+                "adjusted_remaining": prediction["adjusted_remaining"]
             })
 
         return results

@@ -15,9 +15,10 @@ risk_encoder = joblib.load(
 
 def predict_delay(order):
 
-    status_value = status_encoder.transform(
-        [order.status]
-    )[0]
+    try:
+        status_value = status_encoder.transform([order.status])[0]
+    except Exception:
+        status_value = status_encoder.transform(["ORDER_PLACED"])[0]
 
     inventory_value = (
         1 if order.inventory_available

@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+import os
 
 # =====================================
 # PAGE CONFIG
@@ -48,42 +49,25 @@ header {visibility:hidden;}
 """, unsafe_allow_html=True)
 
 # =====================================
-# GET DATA FROM FASTAPI
+# GET DATA FROM FASTAPI (INITIAL RETRIEVAL FOR FILTERS)
 # =====================================
 
 dashboard = requests.get(
     "http://127.0.0.1:8000/dashboard"
 ).json()
 
-orders = requests.get(
-    "http://127.0.0.1:8000/orders"
-).json()
+try:
+    all_orders = requests.get("http://127.0.0.1:8000/orders").json()
+    all_df = pd.DataFrame(all_orders)
+except Exception:
+    all_df = pd.DataFrame()
 
-df = pd.DataFrame(orders)
-
-predictions = requests.get(
-    "http://127.0.0.1:8000/ai/predictions"
-).json()
-
-pred_df = pd.DataFrame(predictions)
-
-inventory_recommendations = requests.get(
-    "http://127.0.0.1:8000/ai/inventory-recommendations"
-).json()
-
-inventory_ai_df = pd.DataFrame(
-    inventory_recommendations
-)
-
-sla_predictions = requests.get(
-    "http://127.0.0.1:8000/ai/sla-predictions"
-).json()
-
-sla_df = pd.DataFrame(sla_predictions)
-
-bottleneck = requests.get(
-    "http://127.0.0.1:8000/ai/bottlenecks"
-).json()
+if not all_df.empty:
+    unique_lens_types = ["All"] + sorted(list(all_df["lens_type"].dropna().unique()))
+    unique_locations = ["All"] + sorted(list(all_df["store_location"].dropna().unique()))
+else:
+    unique_lens_types = ["All"]
+    unique_locations = ["All"]
 
 # =====================================
 # SIDEBAR
@@ -194,6 +178,66 @@ if st.button("🔄 Refresh Dashboard"):
     st.rerun()
 
 # =====================================
+# ORDER INTAKE FORM (NEW)
+# =====================================
+
+with st.expander("📝 New Eyewear Order Intake Form", expanded=False):
+    with st.form("intake_form", clear_on_submit=True):
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            customer_name = st.text_input("Customer Name", placeholder="e.g. John Doe")
+            store_location = st.text_input("Store Location", placeholder="e.g. Bangalore, Karnataka, New York")
+            frame = st.text_input("Frame Model", placeholder="e.g. Classic Black Aviator")
+        with col_c2:
+            lens_type = st.selectbox("Lens Type", ["Single Vision", "Progressive", "Bifocal"])
+            lens_index = st.selectbox("Lens Index (Thickness)", ["1.50", "1.56", "1.60", "1.67", "1.74"])
+            coating = st.selectbox("Coating", ["Anti-Reflective", "Blue Cut", "Photochromic", "None"])
+        
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            left_power = st.text_input("Left Power (OS)", value="-0.00")
+        with col_p2:
+            right_power = st.text_input("Right Power (OD)", value="-0.00")
+        with col_p3:
+            # Populating default SLA days depending on type:
+            default_sla = 3
+            if lens_type == "Bifocal":
+                default_sla = 4
+            elif lens_type == "Progressive":
+                default_sla = 5
+            sla_days = st.number_input("SLA Commitment (Days)", min_value=1, max_value=30, value=default_sla)
+
+        submitted = st.form_submit_button("Submit Order Intake")
+        if submitted:
+            if not customer_name.strip():
+                st.error("Customer Name is required!")
+            elif not store_location.strip():
+                st.error("Store Location is required!")
+            else:
+                payload = {
+                    "customer_name": customer_name,
+                    "store_location": store_location,
+                    "lens_type": lens_type,
+                    "lens_index": lens_index,
+                    "coating": coating,
+                    "frame": frame,
+                    "left_power": left_power,
+                    "right_power": right_power,
+                    "sla_days": int(sla_days)
+                }
+                try:
+                    resp = requests.post("http://127.0.0.1:8000/orders", json=payload)
+                    if resp.status_code == 200:
+                        res_data = resp.json()
+                        inv_msg = "✅ Lenses are in-house! Order scheduled for immediate cutting." if res_data.get("inventory_available") else "⚠️ Lenses NOT in-house! Scheduled for replenishment."
+                        st.success(f"Order #{res_data.get('id')} placed successfully! {inv_msg}")
+                        st.rerun()
+                    else:
+                        st.error(f"Error submitting order: {resp.text}")
+                except Exception as e:
+                    st.error(f"Failed to connect to backend: {e}")
+
+# =====================================
 # SEARCH + FILTERS
 # =====================================
 
@@ -203,7 +247,55 @@ search_customer = st.text_input(
     "Search Customer"
 )
 
-if search_customer:
+col_f1, col_f2, col_f3 = st.columns(3)
+with col_f1:
+    status_filter = st.selectbox(
+        "Filter by Status",
+        [
+            "All",
+            "ORDER_PLACED",
+            "LENS_CUTTING",
+            "QUALITY_CHECK",
+            "QC_FAILED",
+            "DELIVERED",
+            "DISPATCHED"
+        ]
+    )
+with col_f2:
+    lens_type_filter = st.selectbox(
+        "Filter by Lens Type",
+        unique_lens_types
+    )
+with col_f3:
+    store_location_filter = st.selectbox(
+        "Filter by Store Location",
+        unique_locations
+    )
+
+# Prepare API query params based on filters
+query_params = {}
+if status_filter != "All":
+    query_params["status"] = status_filter
+if lens_type_filter != "All":
+    query_params["lens_type"] = lens_type_filter
+if store_location_filter != "All":
+    query_params["store_location"] = store_location_filter
+
+# Fetch filtered order data from API
+orders = requests.get(
+    "http://127.0.0.1:8000/orders",
+    params=query_params
+).json()
+df = pd.DataFrame(orders)
+if df.empty:
+    df = pd.DataFrame(columns=[
+        "id", "customer_name", "store_location", "lens_type", "status", 
+        "inventory_available", "sla_days", "parent_order_id", "delay_reason",
+        "remaining_days", "sla_risk"
+    ])
+
+# Apply client-side text search filter if provided
+if search_customer and not df.empty:
     df = df[
         df["customer_name"].str.contains(
             search_customer,
@@ -212,20 +304,38 @@ if search_customer:
         )
     ]
 
-status_filter = st.selectbox(
-    "Filter by Status",
-    [
-        "All",
-        "ORDER_PLACED",
-        "LENS_CUTTING",
-        "DELIVERED"
-    ]
-)
+# Fetch remaining API data and filter in-memory where applicable
+predictions = requests.get("http://127.0.0.1:8000/ai/predictions").json()
+pred_df = pd.DataFrame(predictions)
+if pred_df.empty:
+    pred_df = pd.DataFrame(columns=["order_id", "customer_name", "status", "predicted_risk"])
+if not df.empty and not pred_df.empty:
+    pred_df = pred_df[pred_df["order_id"].isin(df["id"])]
 
-if status_filter != "All":
-    df = df[
-        df["status"] == status_filter
-    ]
+inventory_recommendations = requests.get("http://127.0.0.1:8000/ai/inventory-recommendations").json()
+inventory_ai_df = pd.DataFrame(inventory_recommendations)
+
+sla_predictions = requests.get("http://127.0.0.1:8000/ai/sla-predictions").json()
+sla_df = pd.DataFrame(sla_predictions)
+if sla_df.empty:
+    sla_df = pd.DataFrame(columns=["order_id", "customer_name", "status", "sla_days", "sla_risk", "message", "elapsed_days", "remaining_days", "adjusted_remaining"])
+if not df.empty and not sla_df.empty:
+    sla_df = sla_df[sla_df["order_id"].isin(df["id"])]
+
+# Merge SLA predictions directly into the main orders dataframe for comprehensive view
+if not df.empty and not sla_df.empty:
+    df = pd.merge(
+        df,
+        sla_df[["order_id", "remaining_days", "adjusted_remaining", "sla_risk"]],
+        left_on="id",
+        right_on="order_id",
+        how="left"
+    )
+    # Fill defaults for display
+    df["sla_risk"] = df["sla_risk"].fillna("SAFE")
+    df["remaining_days"] = df["remaining_days"].fillna(df["sla_days"])
+
+bottleneck = requests.get("http://127.0.0.1:8000/ai/bottlenecks").json()
 
 # =====================================
 # STATUS SUMMARY
@@ -267,16 +377,27 @@ with s3:
 # =====================================
 
 def color_status(val):
-
     if val == "ORDER_PLACED":
         return "background-color:#BFDBFE"
-
     elif val == "LENS_CUTTING":
-        return "background-color:#FBBF24"
-
+        return "background-color:#FDE047"
+    elif val == "QUALITY_CHECK":
+        return "background-color:#C084FC"
+    elif val == "QC_FAILED":
+        return "background-color:#FCA5A5"
     elif val == "DELIVERED":
         return "background-color:#86EFAC"
+    elif val == "DISPATCHED":
+        return "background-color:#6EE7B7"
+    return ""
 
+def color_sla_risk(val):
+    if val == "BREACH":
+        return "background-color:#FCA5A5; color:#7F1D1D; font-weight:bold"
+    elif val == "MONITOR":
+        return "background-color:#FEF08A; color:#713F12; font-weight:bold"
+    elif val == "SAFE":
+        return "background-color:#BBF7D0; color:#14532D"
     return ""
 
 # =====================================
@@ -285,27 +406,88 @@ def color_status(val):
 
 st.markdown("## 📋 Orders")
 
-display_df = df[
-    [
-        "id",
-        "customer_name",
-        "store_location",
-        "lens_type",
-        "status",
-        "inventory_available",
-        "sla_days"
-    ]
-]
+columns_to_show = ["id", "customer_name", "store_location", "lens_type", "status", "inventory_available", "sla_days"]
+if not df.empty:
+    if "remaining_days" in df.columns:
+        columns_to_show.append("remaining_days")
+    if "sla_risk" in df.columns:
+        columns_to_show.append("sla_risk")
+    if "parent_order_id" in df.columns:
+        columns_to_show.append("parent_order_id")
+    if "delay_reason" in df.columns:
+        columns_to_show.append("delay_reason")
+
+display_df = df[columns_to_show] if not df.empty else pd.DataFrame(columns=columns_to_show)
 
 styled_df = display_df.style.map(
     color_status,
     subset=["status"]
 )
+if "sla_risk" in display_df.columns:
+    styled_df = styled_df.map(
+        color_sla_risk,
+        subset=["sla_risk"]
+    )
 
 st.dataframe(
     styled_df,
     use_container_width=True
 )
+
+# =====================================
+# INTERACTIVE ORDER ACTIONS (CONSOLIDATED)
+# =====================================
+
+st.markdown("### ✏️ Update Order Status & Delay Reason")
+if not df.empty:
+    active_rows = df[df["status"] != "DELIVERED"]
+    if not active_rows.empty:
+        # Create list of choices like "Order #3 - Abhijeet (Bangalore)"
+        order_options = {}
+        for _, r in active_rows.iterrows():
+            label = f"Order #{r['id']} - {r['customer_name']} ({r['store_location']}) [Current: {r['status']}]"
+            order_options[label] = r
+            
+        uc1, uc2, uc3, uc4 = st.columns([3, 2, 4, 1.5])
+        with uc1:
+            selected_label = st.selectbox("Select Order to Update", list(order_options.keys()))
+        
+        # Retrieve currently selected order details
+        selected_order = order_options[selected_label]
+        
+        statuses = ["ORDER_PLACED", "LENS_CUTTING", "QUALITY_CHECK", "QC_FAILED", "DELIVERED", "DISPATCHED"]
+        try:
+            default_idx = statuses.index(selected_order["status"])
+        except ValueError:
+            default_idx = 0
+            
+        with uc2:
+            new_status = st.selectbox("New Status", statuses, index=default_idx)
+        with uc3:
+            delay_val = selected_order.get("delay_reason", "") or ""
+            if pd.isna(delay_val) or not delay_val:
+                delay_val = ""
+            reason = st.text_input("Delay Reason (optional)", value=delay_val, placeholder="e.g. Scratched lens")
+            
+        with uc4:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # spacer
+            submit_update = st.button("Update Order", use_container_width=True)
+            
+        if submit_update:
+            payload = {
+                "new_status": new_status,
+                "delay_reason": reason if reason.strip() else None
+            }
+            resp = requests.patch(f"http://127.0.0.1:8000/orders/{selected_order['id']}/status", json=payload)
+            if resp.status_code == 200:
+                st.toast(f"Order #{selected_order['id']} updated successfully!")
+                st.rerun()
+            else:
+                st.error(f"Failed to update Order #{selected_order['id']}: {resp.text}")
+    else:
+        st.info("No active orders available to update.")
+else:
+    st.info("No active orders to update.")
 
 # =====================================
 # STATUS DISTRIBUTION
@@ -462,7 +644,7 @@ st.dataframe(
 )
 
 breach_count = len(
-    sla_df[sla_df["sla_risk"] == "BREACH_RISK"]
+    sla_df[sla_df["sla_risk"] == "BREACH"]
 )
 
 monitor_count = len(
@@ -477,7 +659,7 @@ c1, c2, c3 = st.columns(3)
 
 with c1:
     st.error(
-        f"🚨 Breach Risk : {breach_count}"
+        f"🚨 Breach : {breach_count}"
     )
 
 with c2:
@@ -489,3 +671,19 @@ with c3:
     st.success(
         f"✅ Safe : {safe_count}"
     )
+
+# =====================================
+# WHATSAPP ALERT LOGS (NEW)
+# =====================================
+st.markdown("---")
+st.markdown("## 💬 Simulated WhatsApp Alert Logs")
+whatsapp_log_file = "whatsapp_alerts.log"
+try:
+    if os.path.exists(whatsapp_log_file):
+        with open(whatsapp_log_file, "r", encoding="utf-8") as f:
+            logs = f.read()
+        st.text_area("Live WhatsApp Alerts Dispatched", value=logs, height=250)
+    else:
+        st.info("No WhatsApp alerts dispatched yet.")
+except Exception as e:
+    st.error(f"Error reading WhatsApp logs: {e}")

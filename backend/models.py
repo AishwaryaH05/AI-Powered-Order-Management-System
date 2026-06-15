@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from datetime import datetime
 
 from backend.database import Base
@@ -28,6 +28,10 @@ class Order(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # ADDED FIELDS FOR GAP 1 AND GAP 3
+    parent_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+    delay_reason = Column(String, nullable=True)
+
 class Inventory(Base):
     __tablename__ = "inventory"
 
@@ -37,6 +41,10 @@ class Inventory(Base):
     power = Column(String)
 
     quantity = Column(Integer)
+
+    # ADDED FIELDS FOR GAP 6
+    coating = Column(String, nullable=True)
+    lens_index = Column(String, nullable=True)
 
 class OrderHistory(Base):
     __tablename__ = "order_history"

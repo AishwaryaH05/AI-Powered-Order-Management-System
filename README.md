@@ -27,36 +27,41 @@ This system provides operational visibility through AI-powered monitoring, helpi
 
 ### Order Management
 
-* Create eyewear orders
-* Update order status
-* Track complete order lifecycle
-* Store prescription details
+* Create eyewear orders using the dashboard intake form
+* Update order status and log delay reasons
+* Track complete order lifecycle (including custom stages: `QUALITY_CHECK`, `QC_FAILED`, `DISPATCHED`)
+* Automatically trigger a re-order loop (child order spawned under `ORDER_PLACED` and linked via `parent_order_id` when parent is set to `QC_FAILED`)
+* Store prescription details (Left OS / Right OD powers)
 * Monitor fulfillment progress
 
 ### Inventory Management
 
-* Inventory verification workflow
-* Inventory availability tracking
-* Low stock identification
+* Inventory verification matching lens specifications: lens type, coating, thickness index, and power
+* Validates stock for **both** left and right powers ($\ge 2$ units for identical left/right powers, $\ge 1$ unit per power for distinct powers)
+* Real-time inventory availability tracking and stock depletion on order creation and child re-orders
+* Low stock identification aggregated by specifications (lens type + coating + lens index combinations)
 * Inventory intelligence recommendations
 
 ### AI & Machine Learning
 
-* Random Forest-based delay prediction
+* Random Forest-based delay prediction with runtime fallback protection for new stages
 * Order prioritization engine
-* SLA breach prediction
+* Dynamic SLA breach prediction calculating elapsed days, remaining days, and stage-specific risk multipliers
+* Real-time SMTP email and simulated WhatsApp warning notifications dispatched to the operational team **before** a breach occurs (on `MONITOR` or `BREACH` risk)
 * Bottleneck analysis
 * Operational insights dashboard
 
 ### Dashboard
 
 * Real-time KPIs
-* Interactive order table
-* Search & filtering
+* 📝 New Eyewear Order Intake Form to submit orders and see real-time in-house stock availability
+* Interactive order table displaying parent/child order linkages, delay reasons, SLA remaining days, and risk levels
+* Interactive row-by-row status and delay reason update forms
+* Multi-dimensional filtering (filter by status, lens type, and store location)
 * Status distribution charts
 * ML prediction monitoring
 * Inventory intelligence view
-* SLA monitoring dashboard
+* SLA monitoring dashboard with a live simulated WhatsApp alerts log feed
 
 ---
 
@@ -125,6 +130,7 @@ AI_ORDER_MANAGEMENT/
 │   ├── ml_predictor.py
 │   ├── priority_service.py
 │   ├── sla_service.py
+│   ├── alert_service.py
 │   ├── bottleneck_service.py
 │   │
 │   └── ml/
@@ -139,15 +145,21 @@ AI_ORDER_MANAGEMENT/
 │   └── app.py
 │
 ├── screenshots/
-│   ├── dashboard.png
-│   ├── orders_table.png
-│   ├── order_status_distribution.png
-│   ├── ml_predictions.png
-│   ├── operational_insights.png
-│   └── sla_monitoring.png
+│   ├── image1.png
+│   ├── image2.png
+│   ├── image3.png
+│   ├── image4.png
+│   ├── image5.png
+│   ├── image6.png
+│   ├── image7.png
+│   └── image8.png
+│
+├── scratch/
+│   └── test_endpoints.py
 │
 ├── requirements.txt
 ├── README.md
+├── architecture_note.md
 │
 └── venv/
 ```
@@ -155,78 +167,81 @@ AI_ORDER_MANAGEMENT/
 
 ## Dashboard Screenshots
 
-### Main Dashboard
+### Main Dashboard Header & Intake Form
 
-![Main Dashboard](screenshots/dashboard.png)
+![Main Dashboard Header](screenshots/image1.png)
 
 Shows:
 
-* Total Orders
-* Active Orders
-* Delivered Orders
-* Inventory Availability
-* Search & Filters
+* Total Orders, Active Orders, Delivered Orders, and Inventory Available counts
+* Real-Time order status status banner
+* Expandable Eyewear Order Intake Form with automated default SLA values
 
 ---
 
-### Orders & Analytics
+### Filters & Main Orders Grid
 
-#### Orders Table
+![Main Orders Grid](screenshots/image2.png)
 
-![Orders Table](screenshots/orders_table.png)
+Shows:
+
+* Customer Search and Filters by status, lens type, and store location
+* Order Summary metrics
+* Complete Orders grid displaying prescription details, remaining SLA days, and risk levels
+
+---
+
+### Update Status & Delay Reasons
+
+![Update Panels](screenshots/image3.png)
 
 Features:
 
-* Order tracking
-* Status monitoring
-* Inventory visibility
-* SLA visibility
-
-#### Order Status Distribution
-
-![Order Analytics](screenshots/order_status_distribution.png)
-
-Provides a visual breakdown of order statuses across the workflow.
+* Direct drop-downs to change the lifecycle status of any active order
+* Inline text input fields to record delay reasons (e.g. for re-orders)
 
 ---
 
-### AI Predictions
+### Order Status Distribution
 
-![ML Predictions](screenshots/ml_predictions.png)
+![Order Analytics](screenshots/image4.png)
 
-Machine Learning model predicts:
-
-* HIGH Risk Orders
-* MEDIUM Risk Orders
-* LOW Risk Orders
-
-based on:
-
-* Inventory Availability
-* Order Status
-* SLA Days
+Provides a visual breakdown of order volumes across status categories.
 
 ---
 
-### Operational Insights
+### AI Insights & ML Predictions
 
-#### Bottleneck Analysis
+#### Priority Orders
 
-![Operational Insights](screenshots/operational_insights.png)
+![Priority Orders](screenshots/image5.png)
 
-Identifies workflow stages where orders are accumulating and recommends operational actions.
+Shows AI priority recommendations based on stock availability and production statuses.
 
-#### SLA Monitoring
+#### Machine Learning Predictions
 
-![SLA Monitoring](screenshots/sla_monitoring.png)
+![ML Predictions](screenshots/image6.png)
+
+Machine Learning model predicts delay risks (High/Medium/Low) using Random Forest features.
+
+---
+
+### AI Operational Insights & Inventory Low Stock Warnings
+
+![Operational & Inventory Insights](screenshots/image7.png)
+
+Identifies operational bottlenecks and lists inventory items requiring replenishment.
+
+---
+
+### SLA Monitoring & Simulated WhatsApp Alert Logs
+
+![SLA Monitoring & WhatsApp Alert Logs](screenshots/image8.png)
 
 Detects orders that:
 
-* Are within SLA
-* Need monitoring
-* Are at breach risk
-
----
+* Are within SLA or approaching breach (`MONITOR`)
+* Displays live simulated WhatsApp alerts dispatched to operations teams
 
 
 ## AI Features
@@ -265,13 +280,17 @@ Recommendation: Reorder Soon
 
 ### SLA Monitoring
 
-Detects orders at risk of breaching SLA commitments.
+Detects orders at risk of breaching SLA commitments by calculating elapsed days, remaining days, and applying stage-based risk multipliers:
+* `ORDER_PLACED`: 1.0x
+* `LENS_CUTTING`: 1.3x
+* `QUALITY_CHECK`: 1.5x
+* `QC_FAILED`: 2.0x
+* `DISPATCHED`: 0.8x
 
 Outputs:
-
-* SAFE
-* MONITOR
-* BREACH
+* **SAFE**: Within standard commitment window.
+* **MONITOR** (Likely to breach): Dispatches **pre-breach alerts** (SMTP email + simulated WhatsApp logs) to notify the operations team *before* a breach happens.
+* **BREACH** (SLA has been violated): Dispatches urgent breach alerts (SMTP email + simulated WhatsApp logs).
 
 ---
 
@@ -385,7 +404,7 @@ http://127.0.0.1:8000/docs
 ### Start Streamlit Dashboard
 
 ```bash
-streamlit run frontend/dashboard.py
+streamlit run frontend/app.py
 ```
 
 Dashboard URL:
@@ -405,19 +424,25 @@ http://localhost:8501
 POST /orders
 ```
 
-Create a new order.
+Create a new order. Matches both left and right lens powers against inhouse stock (ensuring quantity >= 2 for identical powers and quantity >= 1 for distinct powers) and depletes stock.
 
 ```http
 GET /orders
 ```
 
-Retrieve all orders.
+Retrieve orders. Supports query parameters `status`, `lens_type`, and `store_location` to dynamically filter search results.
 
 ```http
 PUT /orders/{id}/status
 ```
 
 Update order status.
+
+```http
+PATCH /orders/{id}/status
+```
+
+Surgically update order status and log a delay reason. Spawns child re-order loop if updated to `QC_FAILED`.
 
 ```http
 PUT /orders/{id}/inventory

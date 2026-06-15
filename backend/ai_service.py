@@ -41,18 +41,23 @@ def predict_delay_risk(order):
         }
     
 def inventory_recommendation(inventory_items):
+    groups = {}
+    for item in inventory_items:
+        coating = getattr(item, 'coating', None) or ""
+        lens_index = getattr(item, 'lens_index', None) or ""
+        key = (item.lens_type, coating, lens_index)
+        if key not in groups:
+            groups[key] = 0
+        groups[key] += item.quantity
 
     recommendations = []
-
-    for item in inventory_items:
-
-        if item.quantity <= 5:
-
+    for (lens_type, coating, lens_index), total_qty in groups.items():
+        if total_qty <= 5:
             recommendations.append({
-                "lens_type": item.lens_type,
-                "power": item.power,
-                "current_stock": item.quantity,
+                "lens_type": lens_type,
+                "coating": coating,
+                "lens_index": lens_index,
+                "current_stock": total_qty,
                 "recommendation": "Reorder Soon"
             })
-
     return recommendations
