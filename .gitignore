@@ -33,3 +33,7 @@ dist/
 # Simulation logs
 whatsapp_alerts.log
 *.log
+
+# Video files
+Live_demo_project_video.mp4
+*.mp4
